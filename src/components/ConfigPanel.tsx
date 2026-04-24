@@ -1,0 +1,165 @@
+import type { ExperimentConfig } from "../hooks/useNeuroPongLoop";
+import { serializeHiddenWidths } from "../hooks/useNeuroPongLoop";
+
+interface Props {
+  config: ExperimentConfig;
+  onChange: (c: ExperimentConfig) => void;
+  hiddenField: string;
+  onHiddenFieldChange: (s: string) => void;
+  onApplyHidden: () => void;
+  parseError: string | null;
+}
+
+export function ConfigPanel({
+  config,
+  onChange,
+  hiddenField,
+  onHiddenFieldChange,
+  onApplyHidden,
+  parseError,
+}: Props) {
+  const n = (k: keyof ExperimentConfig, v: number) => onChange({ ...config, [k]: v });
+
+  return (
+    <div className="config-grid">
+      <fieldset>
+        <legend>Clocks</legend>
+        <label htmlFor="gameHz">Game physics (Hz)</label>
+        <input
+          id="gameHz"
+          type="number"
+          min={1}
+          max={240}
+          value={config.gameHz}
+          onChange={(e) => n("gameHz", Number(e.target.value))}
+        />
+        <label htmlFor="brainMs" style={{ marginTop: 8 }}>
+          Brain tick (ms)
+        </label>
+        <input
+          id="brainMs"
+          type="number"
+          min={50}
+          max={60000}
+          step={50}
+          value={config.brainTickMs}
+          onChange={(e) => n("brainTickMs", Number(e.target.value))}
+        />
+      </fieldset>
+
+      <fieldset>
+        <legend>Network topology</legend>
+        <label htmlFor="hidden">Hidden layer widths (comma-separated)</label>
+        <input
+          id="hidden"
+          type="text"
+          value={hiddenField}
+          onChange={(e) => onHiddenFieldChange(e.target.value)}
+          placeholder={serializeHiddenWidths([10, 10, 10])}
+        />
+        {parseError && (
+          <div className="hint" style={{ color: "#f4a261" }}>
+            {parseError}
+          </div>
+        )}
+        <button type="button" style={{ marginTop: 8 }} onClick={onApplyHidden}>
+          Apply layer sizes
+        </button>
+        <label htmlFor="maxH" style={{ marginTop: 8 }}>
+          Max last-hidden width (neurogenesis cap)
+        </label>
+        <input
+          id="maxH"
+          type="number"
+          min={10}
+          max={512}
+          value={config.maxLastHidden}
+          onChange={(e) => n("maxLastHidden", Number(e.target.value))}
+        />
+      </fieldset>
+
+      <fieldset>
+        <legend>Learning</legend>
+        <label htmlFor="rlLr">REINFORCE learning rate</label>
+        <input
+          id="rlLr"
+          type="number"
+          min={0}
+          max={1}
+          step={0.001}
+          value={config.rlLr}
+          onChange={(e) => n("rlLr", Number(e.target.value))}
+        />
+        <label htmlFor="hebb" style={{ marginTop: 8 }}>
+          Hebbian η (0 disables)
+        </label>
+        <input
+          id="hebb"
+          type="number"
+          min={0}
+          max={0.1}
+          step={0.0005}
+          value={config.hebbianEta}
+          onChange={(e) => n("hebbianEta", Number(e.target.value))}
+        />
+        <label htmlFor="base" style={{ marginTop: 8 }}>
+          Baseline EMA β
+        </label>
+        <input
+          id="base"
+          type="number"
+          min={0}
+          max={0.999}
+          step={0.001}
+          value={config.baselineBeta}
+          onChange={(e) => n("baselineBeta", Number(e.target.value))}
+        />
+        <label htmlFor="ng" style={{ marginTop: 8 }}>
+          Neurogenesis probability / tick
+        </label>
+        <input
+          id="ng"
+          type="number"
+          min={0}
+          max={1}
+          step={0.01}
+          value={config.neurogenesisProb}
+          onChange={(e) => n("neurogenesisProb", Number(e.target.value))}
+        />
+      </fieldset>
+
+      <fieldset>
+        <legend>Opponent & policy</legend>
+        <label htmlFor="greedy">Greedy opponent speed scale</label>
+        <input
+          id="greedy"
+          type="number"
+          min={0.1}
+          max={3}
+          step={0.05}
+          value={config.greedySpeedScale}
+          onChange={(e) => n("greedySpeedScale", Number(e.target.value))}
+        />
+        <label style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={config.stochasticPolicy}
+            onChange={(e) => onChange({ ...config, stochasticPolicy: e.target.checked })}
+          />
+          Stochastic policy (explore)
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Randomness</legend>
+        <label htmlFor="seed">RNG seed</label>
+        <input
+          id="seed"
+          type="number"
+          value={config.seed}
+          onChange={(e) => n("seed", Number(e.target.value) | 0)}
+        />
+      </fieldset>
+    </div>
+  );
+}
