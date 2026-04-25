@@ -8,7 +8,8 @@ export function greedyRightPaddleVy(
 ): number {
   const max = p.paddleMaxSpeed * speedScale;
   const dy = s.ballY - s.rightY;
-  if (dy > 4) return max;
-  if (dy < -4) return -max;
+  const dead = Math.max(1.5, p.fieldHeight * (4 / 150));
+  if (dy > dead) return max;
+  if (dy < -dead) return -max;
   return 0;
 }

@@ -48,8 +48,9 @@ Open **http://localhost:8080**.
 3. **Clocks** — Physics runs at **game Hz**, optionally **faster than real time** via a **physics time scale** multiplier (brain tick stays in real milliseconds). The network picks a new action and learns on each **brain tick** (default 1s wall clock). Reward is summed over that interval.
 4. **REINFORCE** — After each interval, weights get a manual backward pass from the softmax policy gradient scaled by **advantage** (return minus an EMA baseline).
 5. **Hebbian** — An extra local update scaled by interval reward co-activates pre/post units.
-6. **Neurogenesis** — With configurable probability, the **last** hidden layer can grow (new row + output column), up to a max width.
-7. **Unplugging** — After each weight-changing step, any **connection** weight ≤ 0 is set to 0. Random init and new growth weights use strictly positive draws so the net does not collapse to all zeros.
+6. **Neurogenesis** — With configurable probability, a **random** hidden layer under the per-layer cap gains a unit. New incoming weights emphasize historically **hot** inputs (EMA of activity); outgoing weights emphasize hot targets in the next layer (or softmax mass into the logits).
+7. **Activity prune** — Each tick may remove one hidden unit whose **activation EMA** is below a threshold (unused for a while), down to a **minimum width** per layer.
+8. **Unplugging** — After each weight-changing step, any **connection** weight ≤ 0 is set to 0. Random init and new growth weights use strictly positive draws so the net does not collapse to all zeros.
 
 The UI has three areas: **Pong** (canvas), **live weight heatmaps** + mean-|w| sparkline, and **configuration** (layer sizes, tick rates, physics speed, learning rates, opponent strength, seed, resets).
 

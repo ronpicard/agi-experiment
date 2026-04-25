@@ -1,13 +1,13 @@
 import type { PaddleAction, PongParams, PongState } from "./types";
 
 export const defaultPongParams: PongParams = {
-  fieldWidth: 200,
-  fieldHeight: 150,
-  paddleWidth: 5,
-  paddleHeight: 25,
-  paddleMaxSpeed: 110,
-  ballRadius: 3,
-  baseBallSpeed: 100,
+  fieldWidth: 100,
+  fieldHeight: 75,
+  paddleWidth: 2.5,
+  paddleHeight: 12.5,
+  paddleMaxSpeed: 55,
+  ballRadius: 1.5,
+  baseBallSpeed: 50,
   ballSpeedGainOnHit: 1.04,
 };
 
@@ -91,7 +91,7 @@ export function stepPong(
     next.ballX = p.paddleWidth + p.ballRadius;
     next.ballVx = Math.abs(next.ballVx) * p.ballSpeedGainOnHit;
     const hit = (next.ballY - next.leftY) / halfP;
-    next.ballVy += hit * 80;
+    next.ballVy += hit * (80 * (p.fieldHeight / 150));
     reward += 0.02;
   }
 
@@ -105,7 +105,7 @@ export function stepPong(
     next.ballX = p.fieldWidth - p.paddleWidth - p.ballRadius;
     next.ballVx = -Math.abs(next.ballVx) * p.ballSpeedGainOnHit;
     const hit = (next.ballY - next.rightY) / halfP;
-    next.ballVy += hit * 80;
+    next.ballVy += hit * (80 * (p.fieldHeight / 150));
     reward -= 0.01;
   }
 

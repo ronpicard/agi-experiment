@@ -33,10 +33,17 @@ export function NetworkPanelGuide({ inputDim }: { inputDim: number }) {
         then reinforces co-active pre/post pairs scaled by that same interval reward.
       </p>
       <p className="hint" style={{ margin: "0 0 0.45rem", color: "#9aa0a6" }}>
-        <strong style={{ color: "#bdc1c6" }}>Neurogenesis</strong> may append a new unit to the{" "}
-        <em>last</em> hidden layer (new row in the last hidden matrix, new column in{" "}
-        <code style={{ fontSize: "0.75rem" }}>W_out</code>), up to the max width in settings—so the
-        heatmaps can grow over time.
+        <strong style={{ color: "#bdc1c6" }}>Neurogenesis</strong> picks a random hidden layer that is
+        still under the per-layer width cap, then adds one neuron. Incoming weights are boosted on
+        the presynaptic units that have been most active (EMA of |input| or hidden activity); outgoing
+        weights into the next layer favor units that have been hot there (or action logits via
+        softmax mass when growing into the output layer).
+      </p>
+      <p className="hint" style={{ margin: "0 0 0.45rem", color: "#9aa0a6" }}>
+        <strong style={{ color: "#bdc1c6" }}>Activity prune:</strong> each brain tick may remove one
+        hidden unit whose <em>activation EMA</em> has fallen below a threshold (it has not been used
+        much for a while), as long as that layer stays above the configured minimum width—this
+        rebalances capacity alongside growth.
       </p>
       <p className="hint" style={{ margin: "0 0 0.45rem", color: "#9aa0a6" }}>
         <strong style={{ color: "#bdc1c6" }}>Unplugging:</strong> after each weight-changing step, any{" "}
@@ -46,9 +53,9 @@ export function NetworkPanelGuide({ inputDim }: { inputDim: number }) {
       </p>
       <p className="hint" style={{ margin: "0 0 0.45rem", color: "#9aa0a6" }}>
         <strong style={{ color: "#bdc1c6" }}>Synapse weakening + pruning</strong> applies a small per-tick
-        decay to weights/biases, then zeros out tiny values. Optionally, the weakest unit in the{" "}
-        <em>last</em> hidden layer can be removed when its total in/out connectivity is below a
-        threshold—so the heatmaps can also shrink over time.
+        decay to weights/biases, then zeros out tiny values. Optionally, the weakest{" "}
+        <em>last-hidden</em> unit by total |weight| can still be culled when below a separate
+        magnitude threshold.
       </p>
       <p className="hint" style={{ margin: 0, color: "#9aa0a6" }}>
         The <strong style={{ color: "#bdc1c6" }}>sparkline</strong> tracks mean absolute weight magnitude

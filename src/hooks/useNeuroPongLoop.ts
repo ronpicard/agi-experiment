@@ -13,7 +13,18 @@ export interface ExperimentConfig {
   physicsTimeScale: number;
   brainTickMs: number;
   hiddenLayerWidths: number[];
-  maxLastHidden: number;
+  /** Max width for any hidden layer (neurogenesis cap per layer). */
+  maxHiddenPerLayer: number;
+  /** Minimum hidden units per layer (prune will not go below). */
+  minHiddenPerLayer: number;
+  /** EMA β for tracking input/hidden activations (hotspots for growth, low EMA for prune). */
+  actEmaBeta: number;
+  /** Neurons with activation EMA below this may be pruned (rebalance). */
+  actPruneThreshold: number;
+  /** How many presynaptic units get stronger weights when a new neuron is born. */
+  neurogenesisHotK: number;
+  neurogenesisInBonus: number;
+  neurogenesisOutBonus: number;
   neurogenesisProb: number;
   rlLr: number;
   hebbianEta: number;
@@ -34,7 +45,13 @@ export const defaultExperimentConfig: ExperimentConfig = {
   physicsTimeScale: 1,
   brainTickMs: 1000,
   hiddenLayerWidths: [10, 10, 10],
-  maxLastHidden: 40,
+  maxHiddenPerLayer: 40,
+  minHiddenPerLayer: 4,
+  actEmaBeta: 0.94,
+  actPruneThreshold: 0.012,
+  neurogenesisHotK: 6,
+  neurogenesisInBonus: 2.2,
+  neurogenesisOutBonus: 2,
   neurogenesisProb: 0.08,
   rlLr: 0.06,
   hebbianEta: 0.002,
@@ -83,6 +100,8 @@ export function useNeuroPongLoop(config: ExperimentConfig) {
     STATE_DIM,
     config.hiddenLayerWidths,
     mulberry32(config.seed + 1),
+    config.minHiddenPerLayer,
+    config.actEmaBeta,
   );
 
   const [snapshot, setSnapshot] = useState<LoopSnapshot>(() => ({
@@ -117,8 +136,15 @@ export function useNeuroPongLoop(config: ExperimentConfig) {
   const rewardAccumRef = useRef(0);
 
   const rebuildPolicy = useCallback((widths: number[], seed: number) => {
+    const c = configRef.current;
     rngPolicyRef.current = mulberry32(seed + 1);
-    policyRef.current = new DeepPolicyNet(STATE_DIM, widths, rngPolicyRef.current);
+    policyRef.current = new DeepPolicyNet(
+      STATE_DIM,
+      widths,
+      rngPolicyRef.current,
+      c.minHiddenPerLayer,
+      c.actEmaBeta,
+    );
   }, []);
 
   const resetGame = useCallback(() => {
@@ -199,7 +225,18 @@ export function useNeuroPongLoop(config: ExperimentConfig) {
       pol.baseline = c.baselineBeta * pol.baseline + (1 - c.baselineBeta) * totalR;
       pol.reinforceUpdate(px, prevA, adv, c.rlLr);
       pol.hebbianUpdate(px, totalR, c.hebbianEta);
-      pol.tryNeurogenesis(c.neurogenesisProb, c.maxLastHidden);
+      pol.minHiddenPerLayer = c.minHiddenPerLayer;
+      pol.actEmaBeta = c.actEmaBeta;
+      pol.forward(px, true);
+      pol.tryPruneLowImportanceNeuron(c.actPruneThreshold);
+      pol.tryNeurogenesisTargeted(
+        c.neurogenesisProb,
+        c.maxHiddenPerLayer,
+        c.neurogenesisHotK,
+        c.neurogenesisInBonus,
+        c.neurogenesisOutBonus,
+        px,
+      );
       pol.synapseWeakenAndPrune(c.synapseDecay, c.pruneWeightAbs, c.pruneNeuronAbs);
     }
 

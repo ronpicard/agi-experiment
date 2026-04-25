@@ -90,10 +90,22 @@ legend {
   gap: 0.65rem;
 }
 
-@media (min-width: 520px) {
+@media (min-width: 640px) {
   .config-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
+}
+
+/* Plain typed numbers: no stepper arrows (still type="number" for semantics). */
+.config-grid input[type="number"]::-webkit-outer-spin-button,
+.config-grid input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.config-grid input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
 }
 
 .row-2 {

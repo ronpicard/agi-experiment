@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { countNetworkParameters, type DeepPolicySnapshot } from "../brain/deepPolicyNet";
+import { countNetworkDisplayStats, type DeepPolicySnapshot } from "../brain/deepPolicyNet";
 
 function Sparkline({ values }: { values: number[] }) {
   const points = useMemo(() => {
@@ -323,7 +323,7 @@ export function WeightViz({
   meanAbsHistory: number[];
   revision: number;
 }) {
-  const counts = useMemo(() => countNetworkParameters(policy), [policy]);
+  const stats = useMemo(() => countNetworkDisplayStats(policy), [policy]);
 
   return (
     <div>
@@ -339,19 +339,33 @@ export function WeightViz({
         }}
       >
         <span>
-          <strong>Weight scalars</strong>: {counts.weightScalars.toLocaleString()}
+          <strong>Connections</strong>: {stats.connectionsNonzero.toLocaleString()}
         </span>
         <span style={{ color: "#6f7378" }}>·</span>
         <span>
-          <strong>Bias scalars</strong>: {counts.biasScalars.toLocaleString()}
+          <strong>Neurons</strong>: {stats.neurons.toLocaleString()}
         </span>
         <span style={{ color: "#6f7378" }}>·</span>
         <span>
-          <strong>Total parameters</strong>: {counts.totalScalars.toLocaleString()}
+          <strong>Neurons added</strong>: {stats.neuronsAdded.toLocaleString()}
+        </span>
+        <span style={{ color: "#6f7378" }}>·</span>
+        <span>
+          <strong>Weights</strong>: {stats.weightSlots.toLocaleString()}
+        </span>
+        <span style={{ color: "#6f7378" }}>·</span>
+        <span>
+          <strong>Bias</strong>: {stats.biasScalars.toLocaleString()}
+        </span>
+        <span style={{ color: "#6f7378" }}>·</span>
+        <span>
+          <strong>Total parameters</strong>: {stats.totalScalars.toLocaleString()}
         </span>
       </div>
       <p className="hint" style={{ marginTop: "-0.35rem", marginBottom: "0.65rem" }}>
-        “Weights” here means every connection weight; biases are listed separately.
+        Connections = non-zero synaptic weights. Weights = all weight tensor entries (slots).
+        Neurons = hidden units plus output (3). Neurons added = lifetime neurogenesis successes. Total
+        = weights + bias.
       </p>
 
       <NetworkDiagram policy={policy} revision={revision} />

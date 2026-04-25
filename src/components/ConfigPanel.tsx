@@ -82,15 +82,87 @@ export function ConfigPanel({
           Apply layer sizes
         </button>
         <label htmlFor="maxH" style={{ marginTop: 8 }}>
-          Max last-hidden width (neurogenesis cap)
+          Max width per hidden layer (neurogenesis cap)
         </label>
         <input
           id="maxH"
           type="number"
-          min={10}
+          min={4}
           max={10000}
-          value={config.maxLastHidden}
-          onChange={(e) => n("maxLastHidden", Number(e.target.value))}
+          value={config.maxHiddenPerLayer}
+          onChange={(e) => n("maxHiddenPerLayer", Number(e.target.value))}
+        />
+        <label htmlFor="minH" style={{ marginTop: 8 }}>
+          Min width per hidden layer (prune floor)
+        </label>
+        <input
+          id="minH"
+          type="number"
+          min={1}
+          max={256}
+          value={config.minHiddenPerLayer}
+          onChange={(e) => n("minHiddenPerLayer", Number(e.target.value))}
+        />
+      </fieldset>
+
+      <fieldset>
+        <legend>Grow / prune (activity)</legend>
+        <label htmlFor="actEmaB">Activation EMA β</label>
+        <input
+          id="actEmaB"
+          type="number"
+          min={0.5}
+          max={0.999}
+          step={0.001}
+          value={config.actEmaBeta}
+          onChange={(e) => n("actEmaBeta", Number(e.target.value))}
+        />
+        <label htmlFor="actPrune" style={{ marginTop: 8 }}>
+          Prune neuron if its activation EMA is below
+        </label>
+        <input
+          id="actPrune"
+          type="number"
+          min={0}
+          max={0.2}
+          step={0.001}
+          value={config.actPruneThreshold}
+          onChange={(e) => n("actPruneThreshold", Number(e.target.value))}
+        />
+        <label htmlFor="hotK" style={{ marginTop: 8 }}>
+          Hot presynaptic slots for new neurons
+        </label>
+        <input
+          id="hotK"
+          type="number"
+          min={1}
+          max={64}
+          value={config.neurogenesisHotK}
+          onChange={(e) => n("neurogenesisHotK", Number(e.target.value))}
+        />
+        <label htmlFor="inBon" style={{ marginTop: 8 }}>
+          Incoming weight bonus on hot inputs
+        </label>
+        <input
+          id="inBon"
+          type="number"
+          min={1}
+          max={10}
+          step={0.1}
+          value={config.neurogenesisInBonus}
+          onChange={(e) => n("neurogenesisInBonus", Number(e.target.value))}
+        />
+        <label htmlFor="outBon" style={{ marginTop: 8 }}>
+          Outgoing weight bonus toward hot next layer
+        </label>
+        <input
+          id="outBon"
+          type="number"
+          min={1}
+          max={10}
+          step={0.1}
+          value={config.neurogenesisOutBonus}
+          onChange={(e) => n("neurogenesisOutBonus", Number(e.target.value))}
         />
       </fieldset>
 
