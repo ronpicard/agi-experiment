@@ -1,14 +1,6 @@
 import { useMemo } from "react";
 import { countNetworkParameters, type DeepPolicySnapshot } from "../brain/deepPolicyNet";
 
-interface MatrixProps {
-  data: Float32Array;
-  rows: number;
-  cols: number;
-  label: string;
-  revision: number;
-}
-
 function Sparkline({ values }: { values: number[] }) {
   const points = useMemo(() => {
     if (values.length === 0) return "";
@@ -36,66 +28,290 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-function heatColor(t: number): string {
-  const x = Math.max(0, Math.min(1, (t + 1) * 0.5));
-  const h = (1 - x) * 240;
-  const l = 35 + x * 35;
-  return `hsl(${h} 70% ${l}%)`;
-}
-
-function MatrixHeatmap({ data, rows, cols, label, revision }: MatrixProps) {
-  const { min, max, cells } = useMemo(() => {
-    let minV = Infinity;
-    let maxV = -Infinity;
-    for (let i = 0; i < data.length; i++) {
-      const v = data[i];
-      if (v < minV) minV = v;
-      if (v > maxV) maxV = v;
-    }
-    if (!Number.isFinite(minV) || !Number.isFinite(maxV)) {
-      minV = -1;
-      maxV = 1;
-    }
-    const span = maxV - minV || 1;
-    const cells = Array.from({ length: rows * cols }, (_, i) => {
-      const v = data[i];
-      const t = (v - minV) / span * 2 - 1;
-      return heatColor(t);
-    });
-    return { min: minV, max: maxV, cells };
-  }, [data, rows, cols, revision]);
-
-  return (
-    <div style={{ marginBottom: "0.65rem" }}>
-      <div style={{ fontSize: "0.72rem", color: "#9aa0a6", marginBottom: 4 }}>{label}</div>
-      <svg
-        viewBox={`0 0 ${cols} ${rows}`}
-        preserveAspectRatio="none"
-        style={{
-          width: "100%",
-          maxHeight: 140,
-          borderRadius: 6,
-          border: "1px solid #3c4043",
-          background: "#0b0c0f",
-        }}
-      >
-        {cells.map((fill, i) => {
-          const r = Math.floor(i / cols);
-          const c = i % cols;
-          return <rect key={i} x={c} y={r} width={1} height={1} fill={fill} />;
-        })}
-      </svg>
-      <div style={{ fontSize: "0.65rem", color: "#6f7378", marginTop: 2 }}>
-        min {min.toFixed(3)} · max {max.toFixed(3)} · {rows}×{cols}
-      </div>
-    </div>
-  );
-}
-
 function formatTopology(snapshot: DeepPolicySnapshot): string {
   const h = snapshot.hiddenLayerWidths.join(" → ");
   const last = 3;
   return `${snapshot.inputDim} → ${h} → ${last}`;
+}
+
+type LayerKind = "input" | "hidden" | "output";
+type LayerSpec = {
+  kind: LayerKind;
+  label: string;
+  size: number;
+  // Each displayed node corresponds to a slice of original neurons.
+  // For unsampled layers, these are singletons.
+  slices: Array<{ start: number; end: number }>; // [start,end)
+};
+
+function clamp01(x: number): number {
+  return Math.max(0, Math.min(1, x));
+}
+
+function pickSlices(size: number, maxNodes: number): Array<{ start: number; end: number }> {
+  if (size <= 0) return [];
+  const n = Math.max(1, Math.min(maxNodes, size));
+  if (n === size) return Array.from({ length: size }, (_, i) => ({ start: i, end: i + 1 }));
+  // Evenly partition [0,size) into n slices.
+  const slices: Array<{ start: number; end: number }> = [];
+  for (let i = 0; i < n; i++) {
+    const a = Math.floor((i * size) / n);
+    const b = Math.floor(((i + 1) * size) / n);
+    slices.push({ start: a, end: Math.max(a + 1, b) });
+  }
+  return slices;
+}
+
+function meanSignedAndAbs(
+  W: Float32Array,
+  outStart: number,
+  outEnd: number,
+  inStart: number,
+  inEnd: number,
+  inD: number,
+): { mean: number; meanAbs: number } {
+  let s = 0;
+  let sa = 0;
+  let n = 0;
+  for (let oi = outStart; oi < outEnd; oi++) {
+    const row = oi * inD;
+    for (let ij = inStart; ij < inEnd; ij++) {
+      const v = W[row + ij];
+      s += v;
+      sa += Math.abs(v);
+      n++;
+    }
+  }
+  if (!n) return { mean: 0, meanAbs: 0 };
+  return { mean: s / n, meanAbs: sa / n };
+}
+
+function meanAbsSlice(b: Float32Array, start: number, end: number): number {
+  let s = 0;
+  let n = 0;
+  for (let i = start; i < end; i++) {
+    s += Math.abs(b[i]);
+    n++;
+  }
+  return n ? s / n : 0;
+}
+
+function NetworkDiagram({
+  policy,
+  revision,
+}: {
+  policy: DeepPolicySnapshot;
+  revision: number;
+}) {
+  const { layers, edges, biasAbs, maxAbs } = useMemo(() => {
+    const hidden = policy.hiddenLayerWidths;
+    const layerSizes = [policy.inputDim, ...hidden, 3];
+
+    // Keep this responsive even with huge layers (up to 10k).
+    const maxNodesByKind: Record<LayerKind, number> = {
+      input: 18,
+      hidden: 22,
+      output: 3,
+    };
+
+    const layers: LayerSpec[] = layerSizes.map((size, idx) => {
+      const kind: LayerKind =
+        idx === 0 ? "input" : idx === layerSizes.length - 1 ? "output" : "hidden";
+      const label =
+        kind === "input"
+          ? `Input (${size})`
+          : kind === "output"
+            ? `Output (${size})`
+            : `Hidden ${idx} (${size})`;
+      return {
+        kind,
+        label,
+        size,
+        slices: pickSlices(size, maxNodesByKind[kind]),
+      };
+    });
+
+    // Bias magnitudes for displayed nodes (for non-input layers).
+    const biasAbs: number[][] = [];
+    for (let li = 0; li < layers.length; li++) {
+      const L = layers[li];
+      if (L.kind === "input") {
+        biasAbs.push(new Array(L.slices.length).fill(0));
+        continue;
+      }
+      // biases index: hidden layer l-1, output layer = hidden.length
+      const b =
+        L.kind === "output" ? policy.biases[hidden.length] : policy.biases[li - 1];
+      biasAbs.push(L.slices.map((s) => meanAbsSlice(b, s.start, s.end)));
+    }
+
+    type Edge = {
+      fromLayer: number;
+      fromIdx: number;
+      toLayer: number;
+      toIdx: number;
+      mean: number;
+      abs: number;
+    };
+    const edges: Edge[] = [];
+
+    // Weight matrices: policy.weights[0..hidden.length-1] are hidden weights; last is output weights.
+    for (let li = 0; li < layers.length - 1; li++) {
+      const from = layers[li];
+      const to = layers[li + 1];
+      const inD = from.size;
+      const W = policy.weights[li]; // outD x inD
+      for (let ti = 0; ti < to.slices.length; ti++) {
+        const outS = to.slices[ti];
+        for (let fi = 0; fi < from.slices.length; fi++) {
+          const inS = from.slices[fi];
+          const { mean, meanAbs } = meanSignedAndAbs(W, outS.start, outS.end, inS.start, inS.end, inD);
+          edges.push({
+            fromLayer: li,
+            fromIdx: fi,
+            toLayer: li + 1,
+            toIdx: ti,
+            mean,
+            abs: meanAbs,
+          });
+        }
+      }
+    }
+
+    let maxAbs = 1e-9;
+    for (const e of edges) maxAbs = Math.max(maxAbs, e.abs);
+    for (const row of biasAbs) for (const v of row) maxAbs = Math.max(maxAbs, v);
+
+    return { layers, edges, biasAbs, maxAbs };
+    // revision forces recompute after growth/prune
+  }, [policy, revision]);
+
+  const W = 860;
+  const topPad = 30;
+  const bottomPad = 22;
+  const leftPad = 18;
+  const rightPad = 18;
+  const layerGap = 130;
+  const H = topPad + bottomPad + (layers.length - 1) * layerGap + 20;
+
+  const layerY = (li: number) => topPad + li * layerGap;
+
+  const nodePos = (li: number, ni: number): { x: number; y: number } => {
+    const L = layers[li];
+    const n = Math.max(1, L.slices.length);
+    const span = W - leftPad - rightPad;
+    const x = leftPad + (n === 1 ? span / 2 : (ni / (n - 1)) * span);
+    const y = layerY(li);
+    return { x, y };
+  };
+
+  const edgeStroke = (mean: number) => (mean >= 0 ? "#79d28a" : "#f28b82");
+
+  return (
+    <div style={{ margin: "0.65rem 0 0.9rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: "0.72rem", color: "#9aa0a6" }}>
+          Traditional view (top→bottom). Opacity encodes |weight| and |bias|. Edge color encodes mean
+          sign (green if mean ≥ 0, red if mean negative); weights ≤ 0 are unplugged after each tick
+          so bundles are often all-positive.
+        </div>
+        <div style={{ fontSize: "0.72rem", color: "#6f7378" }}>
+          Topology: <code style={{ fontSize: "0.72rem" }}>{formatTopology(policy)}</code>
+        </div>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{
+          width: "100%",
+          height: 420,
+          borderRadius: 10,
+          border: "1px solid #3c4043",
+          background: "linear-gradient(180deg, #0b0c0f 0%, #0e1016 100%)",
+        }}
+        role="img"
+        aria-label="Neural network diagram"
+      >
+        {/* Edges */}
+        {edges.map((e, idx) => {
+          const a = nodePos(e.fromLayer, e.fromIdx);
+          const b = nodePos(e.toLayer, e.toIdx);
+          const alpha = clamp01(0.04 + (e.abs / maxAbs) * 0.9);
+          const w = 0.4 + (e.abs / maxAbs) * 1.6;
+          return (
+            <line
+              key={idx}
+              x1={a.x}
+              y1={a.y + 7}
+              x2={b.x}
+              y2={b.y - 7}
+              stroke={edgeStroke(e.mean)}
+              strokeOpacity={alpha}
+              strokeWidth={w}
+            />
+          );
+        })}
+
+        {/* Nodes */}
+        {layers.map((L, li) => {
+          const y = layerY(li);
+          const labelX = leftPad;
+          return (
+            <g key={li}>
+              <text
+                x={labelX}
+                y={y - 16}
+                fill="#9aa0a6"
+                fontSize="12"
+                fontFamily="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto"
+              >
+                {L.label}
+                {L.slices.length < L.size ? ` (showing ${L.slices.length})` : ""}
+              </text>
+
+              {L.slices.map((s, ni) => {
+                const p = nodePos(li, ni);
+                const bAbs = biasAbs[li][ni] ?? 0;
+                const bAlpha = clamp01(0.08 + (bAbs / maxAbs) * 0.92);
+                const r = L.kind === "output" ? 7.5 : 6.2;
+                const fill = L.kind === "input" ? "#8ab4f8" : "#e8eaed";
+                const stroke = L.kind === "input" ? "#5c9ded" : "#3c4043";
+                return (
+                  <g key={ni}>
+                    {/* bias ring */}
+                    {L.kind !== "input" && (
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r={r + 2.6}
+                        fill="none"
+                        stroke="#fbbc04"
+                        strokeWidth={1.4}
+                        strokeOpacity={bAlpha}
+                      />
+                    )}
+                    <circle cx={p.x} cy={p.y} r={r} fill={fill} fillOpacity={0.88} stroke={stroke} strokeWidth={1} />
+                    {L.slices.length <= 12 && (
+                      <text
+                        x={p.x}
+                        y={p.y + 3.6}
+                        textAnchor="middle"
+                        fill="#0b0c0f"
+                        fontSize="9"
+                        fontFamily="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto"
+                      >
+                        {s.start === s.end - 1 ? s.start : `${s.start}…`}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
 }
 
 export function WeightViz({
@@ -109,69 +325,8 @@ export function WeightViz({
 }) {
   const counts = useMemo(() => countNetworkParameters(policy), [policy]);
 
-  const blocks: { data: Float32Array; rows: number; cols: number; label: string }[] = [];
-  let inD = policy.inputDim;
-  for (let l = 0; l < policy.weights.length; l++) {
-    const isOut = l === policy.weights.length - 1;
-    const outD = isOut ? policy.weights[l].length / inD : policy.hiddenLayerWidths[l];
-    const w = policy.weights[l];
-    blocks.push({
-      data: w,
-      rows: outD,
-      cols: inD,
-      label: isOut ? `W_out (${outD}×${inD})` : `W_${l + 1} (${outD}×${inD})`,
-    });
-    inD = outD;
-  }
-
   return (
     <div>
-      <div
-        style={{
-          fontSize: "0.8125rem",
-          lineHeight: 1.45,
-          color: "#bdc1c6",
-          marginBottom: "0.75rem",
-          padding: "0.5rem 0.65rem",
-          background: "#121418",
-          borderRadius: 8,
-          border: "1px solid #2a2d34",
-        }}
-      >
-        <p style={{ margin: "0 0 0.5rem" }}>
-          <strong style={{ color: "#e8eaed" }}>How this panel maps to the run</strong>
-        </p>
-        <p className="hint" style={{ margin: "0 0 0.45rem", color: "#9aa0a6" }}>
-          Each <strong style={{ color: "#bdc1c6" }}>heatmap</strong> is one weight matrix: rows are
-          outputs from that layer, columns are inputs. Color encodes each weight value (cooler =
-          lower, warmer = higher) after normalizing min–max inside that matrix so you can see
-          structure even when scales differ between layers.
-        </p>
-        <p className="hint" style={{ margin: "0 0 0.45rem", color: "#9aa0a6" }}>
-          <strong style={{ color: "#bdc1c6" }}>Data flow:</strong> the game state is compressed to{" "}
-          {policy.inputDim} numbers, then multiplied by{" "}
-          <code style={{ fontSize: "0.75rem" }}>W₁, W₂, …</code> with ReLU between hidden blocks, then{" "}
-          <code style={{ fontSize: "0.75rem" }}>W_out</code> produces three logits (up / down / stay).
-          A softmax turns those into probabilities; on each brain tick the left paddle uses one
-          action (stochastic or greedy argmax, per config).
-        </p>
-        <p className="hint" style={{ margin: "0 0 0.45rem", color: "#9aa0a6" }}>
-          <strong style={{ color: "#bdc1c6" }}>Learning:</strong> when a brain tick ends, REINFORCE
-          nudges weights using the sum of rewards collected during that interval (advantage vs a
-          moving-average baseline). A small <strong style={{ color: "#bdc1c6" }}>Hebbian</strong> term
-          then reinforces co-active pre/post pairs scaled by that same interval reward.{" "}
-          <strong style={{ color: "#bdc1c6" }}>Neurogenesis</strong> may append a new unit to the{" "}
-          <em>last</em> hidden layer (new row in the last hidden matrix, new column in{" "}
-          <code style={{ fontSize: "0.75rem" }}>W_out</code>), up to the max width in settings—so the
-          heatmaps can grow over time.
-        </p>
-        <p className="hint" style={{ margin: 0, color: "#9aa0a6" }}>
-          The <strong style={{ color: "#bdc1c6" }}>sparkline</strong> tracks mean absolute weight
-          magnitude after each learning tick so you can see overall drift or stabilization at a
-          glance.
-        </p>
-      </div>
-
       <div
         style={{
           display: "flex",
@@ -196,14 +351,11 @@ export function WeightViz({
         </span>
       </div>
       <p className="hint" style={{ marginTop: "-0.35rem", marginBottom: "0.65rem" }}>
-        “Weights” here means every connection weight; biases are listed separately. Topology:{" "}
-        <code style={{ fontSize: "0.75rem" }}>{formatTopology(policy)}</code> (last is three paddle
-        actions).
+        “Weights” here means every connection weight; biases are listed separately.
       </p>
 
-      {blocks.map((b, i) => (
-        <MatrixHeatmap key={i} {...b} revision={revision} />
-      ))}
+      <NetworkDiagram policy={policy} revision={revision} />
+
       <div style={{ fontSize: "0.72rem", color: "#9aa0a6", marginTop: 6 }}>Mean |w| over time</div>
       <Sparkline values={meanAbsHistory} />
     </div>

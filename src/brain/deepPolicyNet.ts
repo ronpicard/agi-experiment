@@ -42,12 +42,15 @@ export class DeepPolicyNet {
   private readonly logits: Float32Array;
   private readonly probs: Float32Array;
   private readonly rng: () => number;
+  private readonly minLastHiddenWidth: number;
   baseline = 0;
 
   constructor(inputDim: number, hiddenLayerWidths: number[], rng: () => number) {
     this.inputDim = inputDim;
     this.hiddenLayerWidths = [...hiddenLayerWidths];
     this.rng = rng;
+    this.minLastHiddenWidth =
+      hiddenLayerWidths.length > 0 ? Math.max(1, hiddenLayerWidths[hiddenLayerWidths.length - 1]) : 0;
     this.weights = [];
     this.biases = [];
     this.zs = [];
@@ -71,6 +74,18 @@ export class DeepPolicyNet {
     this.randomizeWeights();
   }
 
+  /**
+   * Remove any synapse whose weight is zero or negative ("unplugged").
+   * Only connection weights are clipped; biases are unchanged.
+   */
+  unplugNonPositiveWeights(): void {
+    for (const w of this.weights) {
+      for (let i = 0; i < w.length; i++) {
+        if (w[i] <= 0) w[i] = 0;
+      }
+    }
+  }
+
   randomizeWeights(): void {
     const rng = this.rng;
     let inD = this.inputDim;
@@ -80,7 +95,8 @@ export class DeepPolicyNet {
       const scale = 1 / Math.sqrt(inD);
       const w = this.weights[l];
       for (let i = 0; i < w.length; i++) {
-        w[i] = (rng() * 2 - 1) * scale;
+        // Strictly positive so random init survives unplugNonPositiveWeights().
+        w[i] = (0.02 + rng() * 0.98) * scale;
       }
       const b = this.biases[l];
       for (let i = 0; i < b.length; i++) {
@@ -89,6 +105,7 @@ export class DeepPolicyNet {
       inD = outD;
     }
     this.baseline = 0;
+    this.unplugNonPositiveWeights();
   }
 
   forward(x: Float32Array): {
@@ -201,6 +218,7 @@ export class DeepPolicyNet {
         this.biases[l][i] += lr * g;
       }
     }
+    this.unplugNonPositiveWeights();
   }
 
   hebbianUpdate(x: Float32Array, reward: number, eta: number): void {
@@ -228,6 +246,131 @@ export class DeepPolicyNet {
         W[k * lastIn + i] += eta * r * hLast[i] * this.probs[k];
       }
     }
+    this.unplugNonPositiveWeights();
+  }
+
+  /**
+   * A simple "synapse weakening + pruning" pass:
+   * - decay: multiplicative weight decay per tick
+   * - pruneWeightAbs: hard-threshold tiny weights to 0
+   * - pruneNeuronAbs: optionally remove the weakest last-hidden unit (if below threshold)
+   */
+  synapseWeakenAndPrune(decay: number, pruneWeightAbs: number, pruneNeuronAbs: number): void {
+    const d = Number.isFinite(decay) ? Math.max(0, Math.min(0.2, decay)) : 0;
+    const wFloor = Number.isFinite(pruneWeightAbs) ? Math.max(0, pruneWeightAbs) : 0;
+    const nFloor = Number.isFinite(pruneNeuronAbs) ? Math.max(0, pruneNeuronAbs) : 0;
+
+    if (d > 0) {
+      const s = 1 - d;
+      for (const w of this.weights) {
+        for (let i = 0; i < w.length; i++) w[i] *= s;
+      }
+      for (const b of this.biases) {
+        for (let i = 0; i < b.length; i++) b[i] *= s;
+      }
+    }
+
+    if (wFloor > 0) {
+      for (const w of this.weights) {
+        for (let i = 0; i < w.length; i++) {
+          const v = w[i];
+          if (v !== 0 && Math.abs(v) < wFloor) w[i] = 0;
+        }
+      }
+      for (const b of this.biases) {
+        for (let i = 0; i < b.length; i++) {
+          const v = b[i];
+          if (v !== 0 && Math.abs(v) < wFloor) b[i] = 0;
+        }
+      }
+    }
+
+    if (nFloor > 0) {
+      this.pruneWeakLastHidden(nFloor);
+    }
+
+    this.unplugNonPositiveWeights();
+  }
+
+  private pruneWeakLastHidden(neuronAbsThreshold: number): boolean {
+    const nH = this.hiddenLayerWidths.length;
+    if (nH === 0) return false;
+    const lastIdx = nH - 1;
+    const cur = this.hiddenLayerWidths[lastIdx];
+    if (cur <= this.minLastHiddenWidth) return false;
+
+    const prevIn = lastIdx === 0 ? this.inputDim : this.hiddenLayerWidths[lastIdx - 1];
+    const Wmid = this.weights[lastIdx]; // (cur x prevIn)
+    const bmid = this.biases[lastIdx];
+    const Wout = this.weights[nH]; // (NUM_ACTIONS x cur)
+
+    let bestI = -1;
+    let bestScore = Infinity;
+
+    for (let i = 0; i < cur; i++) {
+      let incoming = Math.abs(bmid[i]);
+      const row = i * prevIn;
+      for (let j = 0; j < prevIn; j++) incoming += Math.abs(Wmid[row + j]);
+
+      let outgoing = 0;
+      for (let k = 0; k < NUM_ACTIONS; k++) outgoing += Math.abs(Wout[k * cur + i]);
+
+      const score = incoming + outgoing;
+      if (score < bestScore) {
+        bestScore = score;
+        bestI = i;
+      }
+    }
+
+    if (bestI < 0 || bestScore >= neuronAbsThreshold) return false;
+
+    const newW = cur - 1;
+
+    // Shrink last hidden weights (remove row bestI)
+    const wMidNew = new Float32Array(newW * prevIn);
+    {
+      let dst = 0;
+      for (let i = 0; i < cur; i++) {
+        if (i === bestI) continue;
+        const srcRow = i * prevIn;
+        for (let j = 0; j < prevIn; j++) wMidNew[dst++] = Wmid[srcRow + j];
+      }
+    }
+    this.weights[lastIdx] = wMidNew;
+
+    // Shrink last hidden bias / activations
+    const bNew = new Float32Array(newW);
+    const zNew = new Float32Array(newW);
+    const hNew = new Float32Array(newW);
+    {
+      let dst = 0;
+      for (let i = 0; i < cur; i++) {
+        if (i === bestI) continue;
+        bNew[dst] = bmid[i];
+        zNew[dst] = this.zs[lastIdx][i];
+        hNew[dst] = this.hs[lastIdx][i];
+        dst++;
+      }
+    }
+    this.biases[lastIdx] = bNew;
+    this.zs[lastIdx] = zNew;
+    this.hs[lastIdx] = hNew;
+
+    // Shrink output weights (remove column bestI)
+    const wOutNew = new Float32Array(NUM_ACTIONS * newW);
+    for (let k = 0; k < NUM_ACTIONS; k++) {
+      let dst = k * newW;
+      const src = k * cur;
+      for (let i = 0; i < cur; i++) {
+        if (i === bestI) continue;
+        wOutNew[dst++] = Wout[src + i];
+      }
+    }
+    this.weights[nH] = wOutNew;
+
+    this.hiddenLayerWidths[lastIdx] = newW;
+    this.unplugNonPositiveWeights();
+    return true;
   }
 
   tryNeurogenesis(prob: number, maxLastHidden: number): boolean {
@@ -235,7 +378,8 @@ export class DeepPolicyNet {
     if (nH === 0) return false;
     const lastIdx = nH - 1;
     const cur = this.hiddenLayerWidths[lastIdx];
-    if (cur >= maxLastHidden) return false;
+    const cap = Math.max(1, Math.min(10000, Math.floor(maxLastHidden)));
+    if (cur >= cap) return false;
     if (this.rng() >= prob) return false;
 
     const prevIn = lastIdx === 0 ? this.inputDim : this.hiddenLayerWidths[lastIdx - 1];
@@ -246,7 +390,7 @@ export class DeepPolicyNet {
     wNew.set(Wmid);
     const scale = 1 / Math.sqrt(prevIn);
     for (let j = 0; j < prevIn; j++) {
-      wNew[cur * prevIn + j] = (this.rng() * 2 - 1) * scale * 0.25;
+      wNew[cur * prevIn + j] = (0.02 + this.rng() * 0.98) * scale * 0.25;
     }
     this.weights[lastIdx] = wNew;
 
@@ -269,11 +413,12 @@ export class DeepPolicyNet {
       for (let i = 0; i < cur; i++) {
         wOutNew[k * newW + i] = Wout[k * cur + i];
       }
-      wOutNew[k * newW + cur] = (this.rng() * 2 - 1) * 0.05;
+      wOutNew[k * newW + cur] = (0.02 + this.rng() * 0.98) * 0.05;
     }
     this.weights[nH] = wOutNew;
 
     this.hiddenLayerWidths[lastIdx] = newW;
+    this.unplugNonPositiveWeights();
     return true;
   }
 

@@ -1,13 +1,13 @@
 import type { PaddleAction, PongParams, PongState } from "./types";
 
 export const defaultPongParams: PongParams = {
-  fieldWidth: 400,
-  fieldHeight: 300,
-  paddleWidth: 10,
-  paddleHeight: 50,
-  paddleMaxSpeed: 220,
-  ballRadius: 6,
-  baseBallSpeed: 200,
+  fieldWidth: 200,
+  fieldHeight: 150,
+  paddleWidth: 5,
+  paddleHeight: 25,
+  paddleMaxSpeed: 110,
+  ballRadius: 3,
+  baseBallSpeed: 100,
   ballSpeedGainOnHit: 1.04,
 };
 

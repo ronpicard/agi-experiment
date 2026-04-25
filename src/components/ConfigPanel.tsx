@@ -33,6 +33,22 @@ export function ConfigPanel({
           value={config.gameHz}
           onChange={(e) => n("gameHz", Number(e.target.value))}
         />
+        <label htmlFor="physScale" style={{ marginTop: 8 }}>
+          Physics time scale (× real time)
+        </label>
+        <input
+          id="physScale"
+          type="number"
+          min={0.05}
+          max={128}
+          step={0.05}
+          value={config.physicsTimeScale}
+          onChange={(e) => n("physicsTimeScale", Number(e.target.value))}
+        />
+        <p className="hint" style={{ marginTop: 4 }}>
+          Values above 1 advance the Pong sim faster than your clock (more physics steps per
+          frame). Brain tick below is still in real milliseconds.
+        </p>
         <label htmlFor="brainMs" style={{ marginTop: 8 }}>
           Brain tick (ms)
         </label>
@@ -72,7 +88,7 @@ export function ConfigPanel({
           id="maxH"
           type="number"
           min={10}
-          max={512}
+          max={10000}
           value={config.maxLastHidden}
           onChange={(e) => n("maxLastHidden", Number(e.target.value))}
         />
@@ -101,6 +117,42 @@ export function ConfigPanel({
           step={0.0005}
           value={config.hebbianEta}
           onChange={(e) => n("hebbianEta", Number(e.target.value))}
+        />
+        <label htmlFor="decay" style={{ marginTop: 8 }}>
+          Synapse decay / tick (0 disables)
+        </label>
+        <input
+          id="decay"
+          type="number"
+          min={0}
+          max={0.2}
+          step={0.0001}
+          value={config.synapseDecay}
+          onChange={(e) => n("synapseDecay", Number(e.target.value))}
+        />
+        <label htmlFor="pruneW" style={{ marginTop: 8 }}>
+          Prune tiny weights (|w| &lt; threshold → 0)
+        </label>
+        <input
+          id="pruneW"
+          type="number"
+          min={0}
+          max={1}
+          step={0.00001}
+          value={config.pruneWeightAbs}
+          onChange={(e) => n("pruneWeightAbs", Number(e.target.value))}
+        />
+        <label htmlFor="pruneN" style={{ marginTop: 8 }}>
+          Prune weak last-hidden neurons (0 disables)
+        </label>
+        <input
+          id="pruneN"
+          type="number"
+          min={0}
+          max={10}
+          step={0.001}
+          value={config.pruneNeuronAbs}
+          onChange={(e) => n("pruneNeuronAbs", Number(e.target.value))}
         />
         <label htmlFor="base" style={{ marginTop: 8 }}>
           Baseline EMA β

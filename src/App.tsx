@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { PongCanvas } from "./components/PongCanvas";
 import { ConfigPanel } from "./components/ConfigPanel";
+import { NetworkPanelGuide } from "./components/NetworkPanelGuide";
 import { WeightViz } from "./components/WeightViz";
 import {
   defaultExperimentConfig,
@@ -28,10 +29,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <h1>Neuro-Pong (toy RL + Hebbian + neurogenesis)</h1>
+      <h1>AGI-Pong (DRL + Hebbian Learning + Neurogenesis + Synapse Weakening)</h1>
       <p className="hint">
-        Physics runs at the game Hz; the brain chooses a new action on each brain tick and updates
-        weights from accumulated reward. Large brain ticks look intentionally chunky.
+        Physics runs at the game Hz and can run faster than real time via the physics time scale;
+        the brain still uses wall-clock brain ticks and updates weights from reward accumulated
+        over that interval. Large brain ticks look intentionally chunky.
       </p>
 
       <div className="toolbar">
@@ -49,25 +51,28 @@ export default function App() {
         </button>
       </div>
 
-      <div className="grid">
-        <section className="panel">
-          <h2>Pong</h2>
-          <PongCanvas state={snapshot.pong} params={snapshot.params} />
-          <p className="hint">
-            Left (blue) = policy · Right (red) = greedy · Last interval reward:{" "}
-            <strong>{snapshot.lastReward.toFixed(4)}</strong> · Brain ticks: {snapshot.tickCount}
-          </p>
-        </section>
+      <section className="panel" style={{ marginTop: "1rem" }}>
+        <h2>Network weights (live)</h2>
+        <WeightViz
+          policy={snapshot.policy}
+          meanAbsHistory={snapshot.meanAbsHistory}
+          revision={snapshot.tickCount}
+        />
+      </section>
 
-        <section className="panel">
-          <h2>Network weights (live)</h2>
-          <WeightViz
-            policy={snapshot.policy}
-            meanAbsHistory={snapshot.meanAbsHistory}
-            revision={snapshot.tickCount}
-          />
-        </section>
-      </div>
+      <section className="panel" style={{ marginTop: "1rem" }}>
+        <h2>Pong</h2>
+        <PongCanvas state={snapshot.pong} params={snapshot.params} />
+        <p className="hint">
+          Left (blue) = policy · Right (red) = greedy · Last interval reward:{" "}
+          <strong>{snapshot.lastReward.toFixed(4)}</strong> · Brain ticks: {snapshot.tickCount}
+        </p>
+      </section>
+
+      <section className="panel" style={{ marginTop: "1rem" }} aria-labelledby="network-guide-heading">
+        <h2 id="network-guide-heading">How this panel maps to the run</h2>
+        <NetworkPanelGuide inputDim={snapshot.policy.inputDim} />
+      </section>
 
       <section className="panel" style={{ marginTop: "1rem" }}>
         <h2>Configuration</h2>

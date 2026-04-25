@@ -45,12 +45,13 @@ Open **http://localhost:8080**.
 
 1. **State** — The game is encoded into a fixed-length vector (ball, paddles, scores, etc.).
 2. **Policy** — A small MLP (default `12 → 10 → 10 → 10 → 3`) outputs logits for **up / down / stay**; softmax gives action probabilities.
-3. **Clocks** — Physics runs at **game Hz**; the network picks a new action and learns on each **brain tick** (default 1s). Reward is summed over that interval.
+3. **Clocks** — Physics runs at **game Hz**, optionally **faster than real time** via a **physics time scale** multiplier (brain tick stays in real milliseconds). The network picks a new action and learns on each **brain tick** (default 1s wall clock). Reward is summed over that interval.
 4. **REINFORCE** — After each interval, weights get a manual backward pass from the softmax policy gradient scaled by **advantage** (return minus an EMA baseline).
 5. **Hebbian** — An extra local update scaled by interval reward co-activates pre/post units.
 6. **Neurogenesis** — With configurable probability, the **last** hidden layer can grow (new row + output column), up to a max width.
+7. **Unplugging** — After each weight-changing step, any **connection** weight ≤ 0 is set to 0. Random init and new growth weights use strictly positive draws so the net does not collapse to all zeros.
 
-The UI has three areas: **Pong** (canvas), **live weight heatmaps** + mean-|w| sparkline, and **configuration** (layer sizes, tick rates, learning rates, opponent strength, seed, resets).
+The UI has three areas: **Pong** (canvas), **live weight heatmaps** + mean-|w| sparkline, and **configuration** (layer sizes, tick rates, physics speed, learning rates, opponent strength, seed, resets).
 
 ## Repository layout
 

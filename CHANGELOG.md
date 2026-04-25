@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Physics time scale** config (default 1×): run Pong faster than real time while keeping brain ticks in wall-clock milliseconds.
+- **Unplugging:** connection weights ≤ 0 are zeroed after each learning / neurogenesis / synapse pass; random and growth weights initialize strictly positive.
+
 ## [0.1.0] - 2026-04-24
 
 ### Added

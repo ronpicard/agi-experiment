@@ -9,12 +9,20 @@ import type { PaddleAction } from "../sim/types";
 
 export interface ExperimentConfig {
   gameHz: number;
+  /** >1 runs Pong physics faster than wall clock; brain tick stays wall-clock ms. */
+  physicsTimeScale: number;
   brainTickMs: number;
   hiddenLayerWidths: number[];
   maxLastHidden: number;
   neurogenesisProb: number;
   rlLr: number;
   hebbianEta: number;
+  /** Multiplicative per-tick weight decay (0 disables). */
+  synapseDecay: number;
+  /** After decay/update, weights with |w| below this are zeroed. */
+  pruneWeightAbs: number;
+  /** If the last-hidden unit's (incoming+outgoing) magnitude is below this, it may be removed. */
+  pruneNeuronAbs: number;
   baselineBeta: number;
   stochasticPolicy: boolean;
   greedySpeedScale: number;
@@ -23,12 +31,16 @@ export interface ExperimentConfig {
 
 export const defaultExperimentConfig: ExperimentConfig = {
   gameHz: 45,
+  physicsTimeScale: 1,
   brainTickMs: 1000,
   hiddenLayerWidths: [10, 10, 10],
   maxLastHidden: 40,
   neurogenesisProb: 0.08,
   rlLr: 0.06,
   hebbianEta: 0.002,
+  synapseDecay: 0.0005,
+  pruneWeightAbs: 0.00002,
+  pruneNeuronAbs: 0.02,
   baselineBeta: 0.98,
   stochasticPolicy: true,
   greedySpeedScale: 1,
@@ -188,6 +200,7 @@ export function useNeuroPongLoop(config: ExperimentConfig) {
       pol.reinforceUpdate(px, prevA, adv, c.rlLr);
       pol.hebbianUpdate(px, totalR, c.hebbianEta);
       pol.tryNeurogenesis(c.neurogenesisProb, c.maxLastHidden);
+      pol.synapseWeakenAndPrune(c.synapseDecay, c.pruneWeightAbs, c.pruneNeuronAbs);
     }
 
     const x = encodeState(sim, p);
@@ -224,8 +237,12 @@ export function useNeuroPongLoop(config: ExperimentConfig) {
       lastTsRef.current = ts;
       const dt = Math.min(0.1, (ts - last) / 1000);
       const c = configRef.current;
+      const rawScale = c.physicsTimeScale;
+      const physScale = Number.isFinite(rawScale)
+        ? Math.max(0.05, Math.min(128, rawScale))
+        : 1;
 
-      physicsAccRef.current += dt;
+      physicsAccRef.current += dt * physScale;
       const stepDt = 1 / Math.max(1, c.gameHz);
       const rng = rngSimRef.current;
       const sim = simRef.current;

@@ -15,11 +15,12 @@ export function PongCanvas({ state, params: p }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const scale = Math.min(
-      (canvas.clientWidth || 400) / p.fieldWidth,
-      (canvas.clientHeight || 300) / p.fieldHeight,
-      2,
-    );
+    const w = canvas.clientWidth || p.fieldWidth;
+    const h = canvas.clientHeight;
+    const scale =
+      h > 0
+        ? Math.max(0.25, Math.min(w / p.fieldWidth, h / p.fieldHeight))
+        : Math.max(0.25, w / p.fieldWidth);
     canvas.width = p.fieldWidth * scale;
     canvas.height = p.fieldHeight * scale;
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
@@ -54,17 +55,21 @@ export function PongCanvas({ state, params: p }: Props) {
     ctx.fill();
 
     ctx.fillStyle = "#9aa0a6";
-    ctx.font = "14px system-ui,sans-serif";
-    ctx.fillText(String(state.scoreLeft), p.fieldWidth * 0.25, 22);
-    ctx.fillText(String(state.scoreRight), p.fieldWidth * 0.72, 22);
+    const scoreFs = Math.max(10, Math.round(14 * (p.fieldHeight / 300)));
+    ctx.font = `${scoreFs}px system-ui,sans-serif`;
+    const scoreY = p.fieldHeight * 0.073;
+    ctx.fillText(String(state.scoreLeft), p.fieldWidth * 0.25, scoreY);
+    ctx.fillText(String(state.scoreRight), p.fieldWidth * 0.72, scoreY);
   }, [state, p]);
 
   return (
     <canvas
       ref={ref}
       style={{
+        display: "block",
         width: "100%",
-        maxWidth: p.fieldWidth * 2,
+        maxWidth: "50%",
+        margin: "0 auto",
         height: "auto",
         aspectRatio: `${p.fieldWidth} / ${p.fieldHeight}`,
         borderRadius: 8,
